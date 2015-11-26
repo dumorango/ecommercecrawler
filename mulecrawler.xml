@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:mulexml="http://www.mulesoft.org/schema/mule/xml" xmlns:scripting="http://www.mulesoft.org/schema/mule/scripting" xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:tcp="http://www.mulesoft.org/schema/mule/tcp" xmlns:jersey="http://www.mulesoft.org/schema/mule/jersey" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd 
+	http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd											  		
+	http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+	http://www.mulesoft.org/schema/mule/jersey http://www.mulesoft.org/schema/mule/jersey/current/mule-jersey.xsd
+	http://www.mulesoft.org/schema/mule/tcp http://www.mulesoft.org/schema/mule/tcp/current/mule-tcp.xsd
+	http://www.mulesoft.org/schema/mule/xml http://www.mulesoft.org/schema/mule/xml/current/mule-xml.xsd
+	http://www.mulesoft.org/schema/mule/scripting http://www.mulesoft.org/schema/mule/scripting/current/mule-scripting.xsd
+	http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+	http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+	http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+    <http:listener-config name="http_list_config" host="0.0.0.0" port="8081" doc:name="HTTP Listener Configuration"/>
+    <tcp:connector name="tcp" validateConnections="true" sendBufferSize="0" receiveBufferSize="0" receiveBacklog="0" clientSoTimeout="10000" serverSoTimeout="10000" socketSoLinger="0" doc:name="TCP"/>
+    <http:request-config name="http_req_config" protocol="HTTPS" host="www.walmart.com.br" port="80" basePath="/" doc:name="HTTP Request Configuration"/>
+    <http:request-config name="http_req_config1" host="www.walmart.com.br" port="80" doc:name="HTTP Request Configuration1"/>
+    <http:request-config name="http_req_config2" host="busca.submarino.com.br" port="80" doc:name="HTTP Request Configuration2"/>
+    <db:generic-config name="gdb" url="jdbc:postgresql://localhost:5432/Test?user=dumorango&amp;password=matrix" driverClassName="org.postgresql.Driver" doc:name="Generic Database Configuration"/>
+    <asynchronous-processing-strategy name="aps" doc:name="Asynchronous Processing Strategy"/>    
+    <flow name="WalmartSearch">
+        <http:request config-ref="HTTP_Request_Configuration1" path="/busca" method="GET" doc:name="HTTP">
+            <http:request-builder>
+                <http:query-param paramName="ft" value="#[payload]"/>
+            </http:request-builder>
+        </http:request>
+        <component class="crawler.WalmartParser" doc:name="Java"/>
+    </flow>
+    <flow name="Submarino">
+        <http:request config-ref="HTTP_Request_Configuration2" path="/busca.php" method="GET" doc:name="HTTP">
+            <http:request-builder>
+                <http:query-param paramName="q" value="#[payload]"/>
+            </http:request-builder>
+        </http:request>
+        <component class="crawler.SubmarinoParser" doc:name="Java"/>
+    </flow>
+    <flow name="priceCrawlerFlow">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="/search" doc:name="HTTP"/>
+   
+        <logger message="#[message.inboundProperties.'http.query.params'.get('q')]" level="INFO" doc:name="Logger"/>
+        <set-payload value="#[message.inboundProperties.'http.query.params'.get('q')]" doc:name="Set Query to Payload"/>
+        <async processingStrategy="Asynchronous_Processing_Strategy" doc:name="Async">
+            <db:insert config-ref="Generic_Database_Configuration" doc:name="Database">
+                <db:parameterized-query><![CDATA[insert into search (search,time) values (#[payload],#[server.nanoTime()])]]></db:parameterized-query>
+            </db:insert>
+        </async>
+        <scatter-gather doc:name="Scatter-Gather">
+            <flow-ref name="SubmarinoSearch" doc:name="Submarino"/>
+            <flow-ref name="WalMartSearch" doc:name="Walmart"/>
+        </scatter-gather>        
+        <json:object-to-json-transformer doc:name="Object to JSON"/>       
+    </flow>
+</mule>
